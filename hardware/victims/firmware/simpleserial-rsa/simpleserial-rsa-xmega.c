@@ -234,7 +234,7 @@ uint8_t load_bigint_from_os(bigint_t* a, PGM_VOID_P os, uint16_t length_B){
 	a->wordv = malloc(BIGINT_CEIL(length_B));
 	if(!a->wordv){
         putch('F');
-        while(1);
+        // while(1);
 		return 1;
 	}
 	memset(a->wordv, 0, sizeof(bigint_word_t));
@@ -311,7 +311,8 @@ uint8_t get_pt(uint8_t * pt, uint8_t len)
 	uint8_t flag = 0;
 
     const bigint_t* r = &(priv_key.components[0]);
-    const bigint_t* a = ENCRYPTED;
+    const bigint_t* a;
+    // const bigint_t* a = ENCRYPTED;
 
 
     bigint_t res, base;

@@ -29,6 +29,7 @@
 void rsa_init(void);
 uint8_t real_dec(uint8_t * pt, uint8_t len);
 uint8_t get_pt(uint8_t * pt, uint8_t len);
+uint8_t get_en(uint8_t * pt, uint8_t len);
 
 int main(void)
 {
@@ -49,6 +50,7 @@ int main(void)
     //Perform encryption -  must set key via plaintext
     simpleserial_addcmd('p', 16, get_pt);
     //simpleserial_addcmd('k', 16, set_key);
+    simpleserial_addcmd('k', 16, get_en);
     while(1)
         simpleserial_get();
 }

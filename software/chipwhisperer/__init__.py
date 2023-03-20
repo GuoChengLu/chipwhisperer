@@ -8,8 +8,7 @@
 
 Main module for ChipWhisperer.
 """
-
-__version__ = '5.6.1'
+from .version import __version__
 
 try:
     import usb1 # type: ignore
@@ -21,13 +20,14 @@ from zipfile import ZipFile
 from .capture import scopes, targets
 from .capture.api import programmers
 from .capture import acq_patterns as key_text_patterns
-from .common.utils.util import fw_ver_compare
 from .common.api import ProjectFormat as project
 from .common.traces import Trace
 from .common.utils import util
 from .capture.scopes.cwhardware.ChipWhispererSAM3Update import SAMFWLoader, get_at91_ports
 import logging
 from .logging import *
+
+from .common.results.glitch import GlitchController
 import sys, subprocess
 
 
@@ -61,7 +61,7 @@ def list_devices(idProduct : Optional[List[int]]=None, get_sn=True, get_hw_loc=T
     rtn = []
     for dev in dev_list:
         try:
-            name = NEWAE_PIDS[dev.getProductID()]['name']
+            name = NEWAE_PIDS[dev.getProductID()]['name'] # type: ignore
         except Exception as e:
             other_logger.info("Could not get name of device with pid {}".format(dev.getProductID()))
             name = "Unknown"
@@ -115,13 +115,13 @@ def check_for_updates() -> str:
         other_logger.info("ChipWhisperer up to date")
         return latest_version
     else:
-        other_logger.warning("ChipWhisperer update available! See https://chipwhisperer.readthedocs.io/en/latest/installing.html for updating instructions")
+        other_logger.warning("ChipWhisperer update available! See https://chipwhisperer.readthedocs.io/en/latest/index.html#install for updating instructions")
         return latest_version
 
-try:
-    check_for_updates()
-except Exception as e:
-    other_logger.warning("Could not check ChipWhisperer version, error {}".format(e))
+# try:
+#     check_for_updates()
+# except Exception as e:
+#     other_logger.warning("Could not check ChipWhisperer version, error {}".format(e))
 # from chipwhisperer.capture.scopes.cwhardware import ChipWhispererSAM3Update as CWFirmwareUpdate
 
 ktp = key_text_patterns #alias
@@ -290,7 +290,7 @@ def import_project(filename : str, file_type : str='zip', overwrite : bool=False
     return proj
 
 
-def scope(scope_type : Type[scopes.ScopeTypes]=None, name : Optional[str]=None, 
+def scope(scope_type : Optional[Type[scopes.ScopeTypes]]=None, name : Optional[str]=None, 
     sn : Optional[str]=None, idProduct : Optional[int]=None,
     bitstream : Optional[str]=None, force : bool=False,
     prog_speed : int=int(10E6),
@@ -534,6 +534,23 @@ def plot(*args, **kwargs):
 
     .. versionadded:: 5.4
     """
+    if (len(args) == 0) and (len(kwargs) == 0):
+        args = [[]]
     import holoviews as hv # type: ignore
     hv.extension('bokeh', logo=False) #don't display logo, otherwise it pops up everytime this func is called.
     return hv.Curve(*args, **kwargs).opts(width=800, height=600)
+
+class StreamPlot:
+    def __init__(self):
+        import holoviews as hv # type: ignore
+        from holoviews.streams import Pipe # type: ignore
+        hv.extension('bokeh', logo=False) #don't display logo, otherwise it pops up everytime this func is called.
+        self._default_opts = {'height': 600, 'width': 800, 'framewise': True, 'tools': ['hover']}
+        self._pipe = Pipe(data=[])
+        self._dmap = hv.DynamicMap(hv.Curve, streams=[self._pipe]).opts(**self._default_opts)
+
+    def plot(self):
+        return self._dmap.opts(**self._default_opts)
+
+    def update(self, data):
+        self._pipe.send(data)

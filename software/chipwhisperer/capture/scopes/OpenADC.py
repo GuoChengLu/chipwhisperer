@@ -14,11 +14,12 @@
 from chipwhisperer.logging import *
 from chipwhisperer.hardware.naeusb.naeusb import NAEUSB
 from ...hardware.naeusb.serial import USART
-from .cwhardware import ChipWhispererDecodeTrigger, ChipWhispererDigitalPattern, ChipWhispererExtra, \
+from .cwhardware import ChipWhispererDecodeTrigger, ChipWhispererExtra, \
      ChipWhispererSAD, ChipWhispererHuskyClock
 from .cwhardware.ChipWhispererHuskyMisc import XilinxDRP, XilinxMMCMDRP, LEDSettings, HuskyErrors, \
         USERIOSettings, XADCSettings, LASettings, ADS4128Settings
 from ._OpenADCInterface import OpenADCInterface, HWInformation, GainSettings, TriggerSettings, ClockSettings
+
 try:
     from ..trace import TraceWhisperer
     from ..trace.TraceWhisperer import UARTTrigger
@@ -30,7 +31,6 @@ from .cwhardware.ChipWhispererSAM3Update import SAMFWLoader
 from .openadc_interface.naeusbchip import OpenADCInterface_NAEUSBChip
 from ...common.utils import util
 from ...common.utils.util import dict_to_str, DelayedKeyboardInterrupt
-from collections import OrderedDict
 import time
 import numpy as np
 from ..api.cwcommon import ChipWhispererCommonInterface
@@ -119,7 +119,7 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
         self.connectStatus = True
         # self.disable_newattr()
 
-    def _getFWPy(self) -> List[int]:
+    def _getFWPy(self):
         cw_type = self._getCWType()
         if cw_type == "cwlite":
             from ...hardware.firmware.cwlite import fwver
@@ -209,6 +209,8 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
         """
         if self._is_husky:
             self.glitch.enabled = False
+            self.adc.lo_gain_errors_disabled = False
+            self.adc.clip_errors_disabled = False
 
         self.io.glitch_lp = False
         self.io.glitch_hp = False
@@ -227,7 +229,10 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
             self.default_setup()
 
         if self._is_husky:
+            self.adc.lo_gain_errors_disabled = True
+            self.adc.clip_errors_disabled = True
             self.glitch.enabled = True
+            time.sleep(0.1)
             self.glitch.clk_src = "pll"
         else:
             self.glitch.clk_src = "clkgen"
@@ -254,7 +259,10 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
             self.default_setup()
 
         if self._is_husky:
+            self.adc.lo_gain_errors_disabled = True
+            self.adc.clip_errors_disabled = True
             self.glitch.enabled = True
+            time.sleep(0.1)
             self.glitch.clk_src = "pll"
         else:
             self.glitch.clk_src = "clkgen"
@@ -611,6 +619,7 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
         """
         self._read_only_attrs = []
         self._saved_sn = sn
+
         self.scopetype = OpenADCInterface_NAEUSBChip()
 
         self.scopetype.con(sn, idProduct, bitstream, force, prog_speed, **kwargs)
@@ -705,9 +714,6 @@ class OpenADC(util.DisableNewAttr, ChipWhispererCommonInterface):
         self.disable_newattr()
         self._is_connected = True
         self.connectStatus = True
-
-        if self._getNAEUSB().is_MPSSE_enabled():
-            self.io.cwe.setAVRISPMode(1)
 
         return True
 

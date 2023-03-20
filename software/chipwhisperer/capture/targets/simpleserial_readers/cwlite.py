@@ -24,9 +24,9 @@
 import logging
 
 from ._base import SimpleSerialTemplate
-from ....capture.scopes.OpenADC import OpenADC
-from ....capture.scopes.cwnano import CWNano
-from typing import Union
+# from ....capture.scopes.OpenADC import OpenADC
+# from ....capture.scopes.cwnano import CWNano
+# from typing import Union
 
 class SimpleSerial_ChipWhispererLite(SimpleSerialTemplate):
     _name = 'NewAE USB (CWLite/CW1200)'
@@ -35,6 +35,7 @@ class SimpleSerial_ChipWhispererLite(SimpleSerialTemplate):
         SimpleSerialTemplate.__init__(self)
         self._baud = 38400
         self.cwlite_usart = None
+        self._buf_size = None
 
     def close(self):
         pass
@@ -49,15 +50,18 @@ class SimpleSerial_ChipWhispererLite(SimpleSerialTemplate):
     def baud(self):
         return self._baud
 
-    def con(self, scope : Union[OpenADC, CWNano, None] = None):
+    def con(self, scope): # remove typing here to avoid pulling in OpenADC/CWNano
         if not scope is None:
             self.cwlite_usart = scope._get_usart()
             self.cwlite_usart.init(baud=self._baud)
+            self._buf_size = 128
+            if self.cwlite_usart._usb.check_feature("SERIAL_200_BUFFER"):
+                self._buf_size = 200
 
 
     def hardware_inWaiting(self):
         bwait = self.cwlite_usart.inWaiting()
-        if bwait == 127:
+        if bwait >= (self._buf_size - 1):
             logging.warning('SAM3U Serial buffers OVERRUN - data loss has occurred.')
         return bwait
 

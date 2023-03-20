@@ -52,6 +52,8 @@ SAM_FW_FEATURES = [
     "TARGET_SPI", #14
     "MPSSE_ENABLED", #15
     "HUSKY_PIN_CONTROL", #16
+    "NANO_CLOCK_RESET", #17
+    "SAM_ERR_LED" #18
 ]
 
 class CWFirmwareError(Exception):
@@ -68,6 +70,7 @@ SAM_FW_FEATURE_BY_DEVICE = {
         SAM_FW_FEATURES[8]: '0.23.0',
         SAM_FW_FEATURES[13]: '0.60.0',
         SAM_FW_FEATURES[15]: '0.62.0',
+        SAM_FW_FEATURES[17]: '0.64.0',
     },
 
     0xACE2: {
@@ -84,6 +87,7 @@ SAM_FW_FEATURE_BY_DEVICE = {
         SAM_FW_FEATURES[13]: '0.60.0',
         SAM_FW_FEATURES[14]: '0.60.0',
         SAM_FW_FEATURES[15]: '0.62.0',
+        SAM_FW_FEATURES[18]: '0.65.0',
     },
 
     0xACE3: {
@@ -117,6 +121,7 @@ SAM_FW_FEATURE_BY_DEVICE = {
         SAM_FW_FEATURES[14]: '1.1.0',
         SAM_FW_FEATURES[15]: '1.3.0',
         SAM_FW_FEATURES[16]: '1.4.0',
+        SAM_FW_FEATURES[18]: '1.5.0',
     },
 
     0xC305: {
@@ -144,8 +149,28 @@ SAM_FW_FEATURE_BY_DEVICE = {
         SAM_FW_FEATURES[11]: '1.0.0',
         SAM_FW_FEATURES[12]: '1.1.0',
         SAM_FW_FEATURES[13]: '1.2.0'
+    },
+    
+    0xC340: {
+        SAM_FW_FEATURES[0]: '0.1.0',
+        SAM_FW_FEATURES[1]: '0.1.0',
+        SAM_FW_FEATURES[2]: '0.1.0',
+        SAM_FW_FEATURES[3]: '0.1.0',
+        SAM_FW_FEATURES[4]: '0.1.0',
+        SAM_FW_FEATURES[5]: '0.1.0',
+        SAM_FW_FEATURES[6]: '0.1.0',
+        SAM_FW_FEATURES[7]: '0.1.0',
+        SAM_FW_FEATURES[8]: '0.1.0',
+        SAM_FW_FEATURES[10]: '0.1.0',
+        SAM_FW_FEATURES[12]: '0.1.0',
     }
 }
+
+def quick_firmware_erase(product_id, serial_number=None):
+    naeusb = NAEUSB()
+    naeusb.con(serial_number=serial_number, idProduct=[product_id])
+    naeusb.enterBootloader(True)
+
 
 def _check_sam_feature(feature, fw_version, prod_id):
     if prod_id not in SAM_FW_FEATURE_BY_DEVICE:
@@ -284,7 +309,7 @@ def packuint16(data):
 
 #List of all NewAE PID's
 NEWAE_VID = 0x2B3E
-NEWAE_PIDS : Dict[int, Dict[str, Union[str, Optional[List[int]]]]]= {
+NEWAE_PIDS = {
     0xACE2: {'name': "ChipWhisperer-Lite",     'fwver': fw_cwlite.fwver},
     0xACE3: {'name': "ChipWhisperer-CW1200",   'fwver': fw_cw1200.fwver},
     0xC305: {'name': "CW305 Artix FPGA Board", 'fwver': fw_cw305.fwver},
@@ -432,7 +457,7 @@ class NAEUSB_Backend:
             List of USBDevice that match Vendor/Product IDs
             """
         
-        dev_list = [dev for dev in self.usb_ctx.getDeviceIterator() if dev.getVendorID() == 0x2b3e]
+        dev_list = [dev for dev in self.usb_ctx.getDeviceIterator(skip_on_error=True) if dev.getVendorID() == 0x2b3e]
         naeusb_logger.info("Found NAEUSB devices {}".format(dev_list))
         
         if os.name == "nt":
@@ -557,14 +582,16 @@ class NAEUSB_Backend:
 
         return None
 
-    def cmdWriteBulk(self, data : bytearray):
+    def cmdWriteBulk(self, data : bytearray, timeout = None):
         """
         Write data directly to the bulk endpoint.
         :param data: Data to be written
         :return:
         """
         naeusb_logger.debug("BULK WRITE: data = {}".format(data))
-        self.handle.bulkWrite(self.wep, data, timeout=self._timeout)
+        if timeout is None:
+            timeout = self._timeout
+        self.handle.bulkWrite(self.wep, data, timeout=timeout)
 
     writeBulk = cmdWriteBulk
 
@@ -701,8 +728,8 @@ class NAEUSB:
         fw_latest : List[int] = [0, 0]
 
         if self.usbtx.pid in NEWAE_PIDS:
-            name = NEWAE_PIDS[self.usbtx.pid]['name']
-            fw_latest = cast(List[int], NEWAE_PIDS[self.usbtx.pid]['fwver'])
+            name = NEWAE_PIDS[self.usbtx.pid]['name'] # type: ignore
+            fw_latest = cast(List[int], NEWAE_PIDS[self.usbtx.pid]['fwver']) # type: ignore
         else:
             name = "Unknown (PID = %04x)"%self.usbtx.pid
 
@@ -716,6 +743,26 @@ class NAEUSB:
 
     def usbdev(self):
         raise AttributeError("Do Not Call Me")
+
+    def set_led_settings(self, setting=0):
+        if self.check_feature("SAM_ERR_LED"):
+            setting &= 0xFF
+            self.sendCtrl(0x22, 0x12 | (setting << 8))
+
+    def clear_sam_errors(self):
+        if self.check_feature("SAM_ERR_LED"):
+            self.sendCtrl(0x22, 0x13)
+
+    def check_sam_errors(self):
+        if self.check_feature("SAM_ERR_LED"):
+            data = self.readCtrl(0x22, dlen=3)
+            return (data[0] & 0xFF) | (data[1] << 8)
+    
+    def get_led_settings(self):
+        if self.check_feature("SAM_ERR_LED"):
+            data = self.readCtrl(0x22, dlen=3)
+            return data[2]
+        
 
     def close(self):
         """Close USB connection."""
@@ -762,14 +809,13 @@ class NAEUSB:
 
         return self.usbserializer.cmdWriteMem(addr, data)
 
-    def writeBulkEP(self, data : bytearray):
+    def writeBulkEP(self, data : bytearray, timeout = None):
         """
         Write directoly to the bulk endpoint.
         :param data: Data to be written.
         :return:
         """
-
-        return self.usbserializer.writeBulk(data)
+        return self.usbserializer.writeBulk(data, timeout=timeout)
 
     def flushInput(self):
         """Dump all the crap left over"""

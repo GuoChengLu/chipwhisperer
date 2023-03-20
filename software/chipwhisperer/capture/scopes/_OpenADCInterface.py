@@ -805,6 +805,9 @@ class OpenADCInterface(util.DisableNewAttr):
             if len(datapoints) > NumberPoints:
                 datapoints = datapoints[0:NumberPoints]
 
+            if len(self._int_data) > NumberPoints:
+                self._int_data = self._int_data[0:NumberPoints]
+
             # if len(datapoints) < NumberPoints:
             # print len(datapoints),
             # print NumberPoints
@@ -932,6 +935,7 @@ class OpenADCInterface(util.DisableNewAttr):
             self._int_data = np.array(fpData, dtype='int16')
             fpData = fpData / 1024.0 - self.offset
             scope_logger.debug("Trigger_data: {} len={}".format(trigger, len(trigger)))
+            scope_logger.debug("Unprocessed data, fpData: {}, int_data: {}".format(len(fpData), len(self._int_data)))
 
             # Search for the trigger signal
             trigfound = False
@@ -959,12 +963,16 @@ class OpenADCInterface(util.DisableNewAttr):
         if diff > 0:
             #fpData = [pad]*diff + fpData
             fpData = np.append([pad]*diff, fpData)
+            self._int_data = np.append([0x00]*diff, self._int_data)
+            scope_logger.debug("Diff > 0, fpData: {}, int_data: {}".format(len(fpData), len(self._int_data)))
             scope_logger.warning('Pretrigger not met: Do not use downsampling and pretriggering at same time.')
             scope_logger.debug('Pretrigger not met: can attempt to increase presampleTempMargin(in the code).')
         else:
+            scope_logger.debug("Diff <= 0, fpData: {}, int_data: {}".format(len(fpData), len(self._int_data)))
             fpData = fpData[-diff:]
+            self._int_data = self._int_data[-diff:]
 
-        scope_logger.debug("Processed data, ended up with %d samples total"%len(fpData))
+        scope_logger.debug("Processed data, fpData: {}, int_data: {}".format(len(fpData), len(self._int_data)))
 
         return fpData
 
@@ -2528,7 +2536,7 @@ class ClockSettings(util.DisableNewAttr):
         This clock frequency is derived from one of the ADC clock sources as
         described in adc_src.
 
-        :Getter: Return the current frequency in MHz (float). May take
+        :Getter: Return the current frequency in Hz (int). May take
                 up to 0.5s to stabilize after adc_locked is True.
         """
         return self._getAdcFrequency()
@@ -2540,7 +2548,7 @@ class ClockSettings(util.DisableNewAttr):
         Note that the sampling rate may be less than the clock frequency if
         the downsampling factor is greater than 1.
 
-        :Getter: Return the current sampling rate in MS/s (float)
+        :Getter: Return the current sampling rate in samples/s (float)
         """
         return self._adcSampleRate()
 
@@ -2556,13 +2564,13 @@ class ClockSettings(util.DisableNewAttr):
 
     @property
     def freq_ctr(self):
-        """The current frequency at the frequency counter in MHz. Read-only.
+        """The current frequency at the frequency counter in Hz. Read-only.
 
         The frequency counter can be used to check the speed of the CLKGEN
         output or the EXTCLK input. This value shows the current frequency
         reading.
 
-        :Getter: Return the current frequency in MHz (float)
+        :Getter: Return the current frequency in Hz (int)
         """
         return self._get_extfrequency()
 

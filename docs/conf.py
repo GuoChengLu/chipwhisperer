@@ -16,17 +16,20 @@ from glob import glob
 import shutil
 import re
 from pathlib import Path
+import datetime
+from chipwhisperer import __version__
+
 sys.path.insert(0, os.path.abspath('./../software'))
 
 
 # -- Project information -----------------------------------------------------
 
 project = 'ChipWhisperer'
-copyright = "2022, NewAE Technology Inc."
+copyright = "{}, NewAE Technology Inc.".format(datetime.datetime.now().year)
 author = "NewAE Technology Inc."
 
 # The full version, including alpha/beta/rc tags
-release = '5.6.1'
+release = __version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -209,3 +212,4 @@ def generate_contributing(app, config):
 def setup(app):
     # app.connect('config-inited', create_tutorial_files)
     app.connect('config-inited', generate_contributing)
+    app.add_css_file("custom.css")

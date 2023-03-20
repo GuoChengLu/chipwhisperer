@@ -24,8 +24,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with chipwhisperer.  If not, see <http://www.gnu.org/licenses/>.
 #=================================================
-from collections import OrderedDict
 from ....common.utils import util
+from ...api.cwcommon import ChipWhispererSAMErrors
 from .. import _OpenADCInterface as OAI
 
 from ....logging import *
@@ -266,7 +266,7 @@ class LEDSettings(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = {}
         rtn['setting'] = self.setting
         return rtn
 
@@ -306,14 +306,15 @@ class LEDSettings(util.DisableNewAttr):
         self.oa.sendMessage(CODE_WRITE, ADDR_LED_SELECT, [val])
 
 
-class HuskyErrors(util.DisableNewAttr):
+class HuskyErrors(ChipWhispererSAMErrors):
     ''' Gather all the Husky error sources in one place.
         Use scope.errors.clear() to clear them.
     '''
     _name = 'Husky Errors'
 
     def __init__(self, oaiface : OAI.OpenADCInterface, XADC, adc, clock, trace):
-        super().__init__()
+        super().__init__(oaiface.serial) # naeusb comms
+        self.enable_newattr()
         self.oa = oaiface
         self.XADC = XADC
         self.adc = adc
@@ -322,7 +323,7 @@ class HuskyErrors(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = super()._dict_repr()
         rtn['XADC errors'] = self.XADC.errors()
         rtn['ADC errors'] = self.adc.errors
         rtn['extclk error'] = self.clock.extclk_error
@@ -336,6 +337,7 @@ class HuskyErrors(util.DisableNewAttr):
         return self.__repr__()
 
     def clear(self):
+        super().clear()
         self.XADC.status = 0
         self.adc.errors = 0
         self.clock.extclk_error = 0
@@ -353,7 +355,7 @@ class USERIOSettings(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = {}
         rtn['mode'] = self.mode
         rtn['direction'] = self.direction
         rtn['drive_data'] = self.drive_data
@@ -417,8 +419,8 @@ class USERIOSettings(util.DisableNewAttr):
 
     @fpga_mode.setter
     def fpga_mode(self, setting):
-        if not setting in range(0, 9):
-            raise ValueError("Must be integer in [0, 8]")
+        if not setting in range(0, 11):
+            raise ValueError("Must be integer in [0, 10]")
         else:
             self.oa.sendMessage(CODE_WRITE, ADDR_USERIO_DEBUG_SELECT, [setting])
 
@@ -476,7 +478,7 @@ class XADCSettings(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = {}
         rtn['status'] = self.status
         rtn['current temperature [C]'] = '%.1f' % self.temp
         rtn['maximum temperature [C]'] = '%.1f' % self.max_temp
@@ -653,7 +655,7 @@ class LASettings(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = {}
         rtn['present'] = self.present
         rtn['enabled'] = self.enabled
         rtn['clkgen_enabled'] = self.clkgen_enabled
@@ -961,6 +963,7 @@ class LASettings(util.DisableNewAttr):
                             only be used with scope.glitch.trigger_src = 'manual'; may
                             not fire reliably with other settings.
          * "glitch_trigger": The internal glitch trigger in the MMCM1 clock domain.
+         * "trigger_glitch": The trigger *for* the glitch module (aka scope.trigger.triggers).
          * "HS1": The HS1 input clock.
          * "rising_userio_d[0-7]": a rising edge (0->1) on a USERIO pin
          * "falling_userio_d[0-7]": a falling edge (1->0) on a USERIO pin
@@ -1087,6 +1090,7 @@ class LASettings(util.DisableNewAttr):
         'trigger debug' (group 3)
         'internal trace 1' (group 4)
         'internal trace 2' (group 5)
+        'glitch debug' (group 6)
 
         :Getter:
            Return the capture group currently in use.
@@ -1141,6 +1145,8 @@ class LASettings(util.DisableNewAttr):
             val = [5]
         elif source == 'trigger signal 1':
             val = [6]
+        elif source == 'trigger_glitch':
+            val = [7]
         elif 'rising_userio_d' in source:
             val = [0x08 + int(source[-1])]
         elif 'falling_userio_d' in source:
@@ -1169,6 +1175,8 @@ class LASettings(util.DisableNewAttr):
             return 'trigger signal 0'
         elif raw == 6:
             return 'trigger signal 1'
+        elif raw == 7:
+            return 'trigger_glitch'
         elif raw in range(0x8, 0x10):
             return 'rising_userio_d' + str(raw & 0x07)
         elif raw in range(0x10, 0x20):
@@ -1209,6 +1217,8 @@ class LASettings(util.DisableNewAttr):
             num = 4
         elif group == 'internal trace 2':
             num = 5
+        elif group == 'glitch debug':
+            num = 6
         else:
             raise ValueError("invalid group name")
         self.oa.sendMessage(CODE_WRITE, ADDR_LA_CAPTURE_GROUP, [num], Validate=False)
@@ -1227,6 +1237,8 @@ class LASettings(util.DisableNewAttr):
             group = 'internal trace 1'
         elif num == 5:
             group = 'internal trace 2'
+        elif num == 6:
+            group = 'glitch debug'
         else:
             raise ValueError("invalid group name")
         return group
@@ -1246,7 +1258,7 @@ class ADS4128Settings(util.DisableNewAttr):
         self.disable_newattr()
 
     def _dict_repr(self):
-        rtn = OrderedDict()
+        rtn = {}
         rtn['mode'] = self.mode
         rtn['low_speed'] = self.low_speed
         rtn['hi_perf'] = self.hi_perf

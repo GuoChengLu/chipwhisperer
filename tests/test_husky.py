@@ -73,7 +73,6 @@ def reset_target():
     scope.io.nrst = 'high_z'
     time.sleep(0.2)
 
-
 # TODO: program FW?
 scope.sc.reset_fpga()
 scope.adc.clip_errors_disabled = True
@@ -401,21 +400,30 @@ testTraceSegmentData = [
 
 testSADTriggerData = [
     #clock  adc_mul bits   threshold   offset  reps    desc
-    (10e6,  1,      8,     50,         0,      50,     '8bits'),
-    (10e6,  1,      12,    50,         0,      50,     '12bits'),
-    (10e6,  1,      8,     50,         0,      10,     '8bits_SLOW'),
-    (10e6,  10,     8,     50,         0,      50,     'fast_SLOW'),
-    (10e6,  18,     8,     50,         0,      50,     'faster_SLOW'),
-    (10e6,  20,     8,     50,         0,      50,     'fastest'),
-    (10e6,  25,     8,     50,         0,      50,     'overclocked_SLOW'),
+    (10e6,  1,      8,     200,        0,      50,     '8bits'),
+    (10e6,  1,      12,    200,        0,      50,     '12bits'),
+    (10e6,  1,      8,     200,        0,      10,     '8bits_SLOW'),
+    (10e6,  10,     8,     200,        0,      50,     'fast_SLOW'),
+    (10e6,  18,     8,     200,        0,      50,     'faster_SLOW'),
+    (10e6,  20,     8,     200,        0,      50,     'fastest'),
+    (10e6,  25,     8,     200,        0,      50,     'overclocked_SLOW'),
+]
+
+testMultipleSADTriggerData = [
+    #clock  adc_mul bits   half threshold   offset  reps    desc
+    (10e6,  1,      8,     0,   200,        3525,   20,     'regular'),
+    (10e6,  1,      8,     1,   100,        3525,   20,     'half'),
+    (10e6,  20,     8,     0,   200,        3525,   20,     'fast'),
 ]
 
 testUARTTriggerData = [
-    #clock      pin     pattern     reps    desc
-    (10e6,      'tio1', 'r7DF7',    10,     'tio1_10M'),
-    (10e6,      'tio2', 'p000000',  10,     'tio2_10M'),
-    (20e6,      'tio1', 'r7DF7',    10,     'tio1_20M'),
-    (20e6,      'tio2', 'p000000',  10,     'tio2_20M'),
+    #clock      pin     pattern     mask                            bytes_compared  reps    desc
+    (10e6,      'tio1', 'r7DF7',    None,                           8,              10,     'tio1_10M'),
+    (10e6,      'tio1', 'r7DF7xxx', [255,255,255,255,0,0,0,0],      5,              10,     'tio1_10M'),
+    (10e6,      'tio1', 'r7Dxxxxx', [255,255,0,0,0,0,0,0],          3,              10,     'tio1_10M'),
+    (10e6,      'tio2', 'p000000',  None,                           8,              10,     'tio2_10M'),
+    (20e6,      'tio1', 'r7DF7',    None,                           8,              10,     'tio1_20M'),
+    (20e6,      'tio2', 'p000000',  None,                           8,              10,     'tio2_20M'),
 ]
 
 testADCTriggerData = [
@@ -443,14 +451,22 @@ testUserioEdgeTriggerData = [
     ([3,4,5,6,7],   260,        3,      ''),    # exclude pins 0-2 since they are used for trace and could be target-driven
 ]
 
+testGlitchTriggerData = [
+    #module             pattern         reps,   desc
+    ('basic',           [0,1],          100,    'basic_glitch_arm_active'),
+    ('basic',           [0,1,0],        100,    'basic_glitch_arm_inactive'),
+    ('edge_counter',    [1,0,1,0],      100,    'edge_glitch_arm_inactive'),
+    ('edge_counter',    [0,1,0,1,0,1],  100,    'edge_glitch_arm_active'),
+]
+
 
 def test_fpga_version():
-    assert scope.fpga_buildtime == '9/2/2022, 16:01'
+    assert scope.fpga_buildtime == '3/2/2023, 21:35'
 
 def test_fw_version():
     assert scope.fw_version['major'] == 1
-    assert scope.fw_version['minor'] in [3, 4]
-    #assert scope.sam_build_date == '21:12:14 May 22 2022'
+    assert scope.fw_version['minor'] == 5
+    assert scope.sam_build_date == '21:32:05 Jan 31 2023'
 
 
 @pytest.mark.parametrize("address, nbytes, reps, desc", testRWData)
@@ -1111,7 +1127,7 @@ def test_trace (swo_trace, raw_capture, interface, trigger_source, desc):
         trace.capture.rules_enabled = []
     else:
         trace.capture.raw = False
-        trace.set_pattern_match(0, [3, 8, 32])
+        trace.set_pattern_match(0, [3, 8, 32, 0, 0, 0, 0, 0], [255, 255, 255, 0, 0, 0, 0, 0])
     trace.arm_trace()
     powertrace = cw.capture_trace(scope, target, text, key)
     raw = trace.read_capture_data()
@@ -1156,7 +1172,7 @@ def test_segment_trace (swo_trace, interface, triggers, desc):
     trace.capture.trigger_source = 0
     trace.capture.raw = False
     trace.capture.max_triggers = triggers
-    trace.set_pattern_match(0, [3, 8, 32])
+    trace.set_pattern_match(0, [3, 8, 32, 0, 0, 0, 0, 0], [255, 255, 255, 0, 0, 0, 0, 0])
     scope.adc.presamples = 0
     scope.adc.samples = 30
     scope.adc.segments = triggers
@@ -1184,7 +1200,6 @@ def test_sad_trigger (fulltest, clock, adc_mul, bits, threshold, offset, reps, d
     assert scope.clock.adc_freq == clock * adc_mul
     target.baud = 38400 * clock / 1e6 / 7.37
 
-
     scope.errors.clear()
     scope.trace.enabled = False
     scope.trace.target = None
@@ -1196,7 +1211,7 @@ def test_sad_trigger (fulltest, clock, adc_mul, bits, threshold, offset, reps, d
     scope.adc.clip_errors_disabled = False
     scope.adc.segment_cycle_counter_en = False
     scope.adc.segments = 1
-    scope.adc.samples = scope.SAD._sad_reference_length * 2
+    scope.adc.samples = scope.SAD.sad_reference_length * 2
     scope.adc.presamples = 0
     scope.adc.bits_per_sample = bits
     scope.adc.offset = offset
@@ -1204,7 +1219,7 @@ def test_sad_trigger (fulltest, clock, adc_mul, bits, threshold, offset, reps, d
 
     scope.trigger.module = 'basic'
     # scope.gain.db = 23.7
-    scope.gain.db = 20
+    scope.gain.db = 12
     reftrace = cw.capture_trace(scope, target, bytearray(16), bytearray(16))
     assert scope.adc.errors == False, (scope.adc.errors, scope.gain)
 
@@ -1213,21 +1228,88 @@ def test_sad_trigger (fulltest, clock, adc_mul, bits, threshold, offset, reps, d
     scope.trigger.module = 'SAD'
     scope.adc.offset = 0
 
-    scope.adc.presamples = scope.SAD._sad_reference_length + 8
+    # set presamples so that the waveforms line up;
+    # + sad_reference_length because trigger happens at the end of the SAD pattern;
+    # + latency for the latency of the SAD triggering logic.
+    scope.adc.presamples = scope.SAD.sad_reference_length + scope.SAD.latency
     for r in range(reps):
         sadtrace = cw.capture_trace(scope, target, bytearray(16), bytearray(16))
         assert sadtrace is not None, 'SAD-triggered capture failed on rep {}'.format(r)
         assert scope.adc.errors == False
         sad = 0
-        for i in range(scope.SAD._sad_reference_length):
+        for i in range(scope.SAD.sad_reference_length):
             sad += abs(reftrace.wave[i] - sadtrace.wave[i])
         sad = int(sad*2**scope.SAD._sad_bits_per_sample)
         assert sad <= threshold, 'SAD=%d, threshold=%d (iteration: %d)' %(sad, threshold, r)
 
 
-@pytest.mark.parametrize("clock, pin, pattern, reps, desc", testUARTTriggerData)
+@pytest.mark.parametrize("clock, adc_mul, bits, half, threshold, offset, reps, desc", testMultipleSADTriggerData)
 @pytest.mark.skipif(not target_attached, reason='No target detected')
-def test_uart_trigger (fulltest, clock, pin, pattern, reps, desc):
+def test_multiple_sad_trigger (fulltest, clock, adc_mul, bits, half, threshold, offset, reps, desc):
+    if not fulltest and 'SLOW' in desc:
+        pytest.skip("use --fulltest to run")
+        return None
+    if not fulltest:
+        reps = 3 # go faster
+    reset_setup()
+    scope.clock.clkgen_freq = clock
+    scope.clock.adc_mul = adc_mul
+    time.sleep(0.1)
+    assert scope.clock.pll.pll_locked == True
+    assert scope.clock.adc_freq == clock * adc_mul
+    target.baud = 38400 * clock / 1e6 / 7.37
+
+    scope.errors.clear()
+    scope.trace.enabled = False
+    scope.trace.target = None
+    scope.default_setup()
+    reset_target()
+    time.sleep(0.5)
+    target.baud = 38400
+    scope.SAD.multiple_triggers = True
+    scope.SAD.half_pattern = half
+    scope.adc.lo_gain_errors_disabled = True
+    scope.adc.clip_errors_disabled = False
+    scope.adc.segment_cycle_counter_en = False
+    scope.adc.segments = 1
+    scope.adc.samples = scope.SAD.sad_reference_length * 2
+    scope.adc.presamples = 0
+    scope.adc.bits_per_sample = bits
+    scope.adc.offset = offset
+
+    scope.trigger.module = 'basic'
+    # scope.gain.db = 23.7
+    scope.gain.db = 12
+    reftrace = cw.capture_trace(scope, target, bytearray(16), bytearray(16))
+    assert scope.adc.errors == False, (scope.adc.errors, scope.gain)
+
+    scope.SAD.reference = reftrace.wave
+    scope.SAD.threshold = threshold
+    scope.trigger.module = 'SAD'
+    scope.adc.offset = 0
+
+    # set presamples so that the waveforms line up;
+    # + sad_reference_length because trigger happens at the end of the SAD pattern;
+    # + latency for the latency of the SAD triggering logic.
+    scope.adc.presamples = scope.SAD.sad_reference_length + scope.SAD.latency
+    scope.adc.segments = 11
+    scope.adc.samples -= scope.adc.samples %3
+    for r in range(reps):
+        sadtrace = cw.capture_trace(scope, target, bytearray(16), bytearray(16))
+        assert sadtrace is not None, 'SAD-triggered capture failed on rep {}'.format(r)
+        assert scope.adc.errors == False
+        assert scope.SAD.num_triggers_seen == scope.adc.segments
+        for s in range(scope.adc.segments):
+            sad = 0
+            for i in range(scope.SAD.sad_reference_length):
+                sad += abs(reftrace.wave[i] - sadtrace.wave[i+s*scope.adc.samples])
+            sad = int(sad*2**scope.SAD._sad_bits_per_sample)
+            assert sad <= threshold, 'SAD=%d, threshold=%d (iteration: %d, segment %d)' %(sad, threshold, r, s)
+
+
+@pytest.mark.parametrize("clock, pin, pattern, mask, bytes_compared, reps, desc", testUARTTriggerData)
+@pytest.mark.skipif(not target_attached, reason='No target detected')
+def test_uart_trigger (fulltest, clock, pin, pattern, mask, bytes_compared, reps, desc):
     if not fulltest:
         reps = 2 # reduce number of reps to speed up
     reset_setup()
@@ -1255,7 +1337,7 @@ def test_uart_trigger (fulltest, clock, pin, pattern, reps, desc):
     assert scope.UARTTrigger.uart_state == 'ERX_IDLE', 'UART is still stuck!'
     scope.UARTTrigger.enabled = True
     scope.UARTTrigger.baud = target.baud
-    scope.UARTTrigger.set_pattern_match(0, pattern)
+    scope.UARTTrigger.set_pattern_match(0, pattern, mask)
     scope.UARTTrigger.trigger_source = 0
 
     for i in range(reps):
@@ -1270,8 +1352,11 @@ def test_uart_trigger (fulltest, clock, pin, pattern, reps, desc):
             raise ValueError('Not supported: please trigger from tio1 or tio2')
         # we don't check the power trace itself (e.g. measure SAD against a tio4-triggered capture with the correct offset), but we check
         # several other things which indirectly tell us that the UART-triggered capture worked:
-        assert ss_comm[:len(pattern)] == pattern, "Target last read (%s) doesn't match pattern (%s)" % (ss_comm, pattern)
-        assert scope.UARTTrigger.matched_pattern_data[:len(pattern)] == pattern, "matched_pattern_data (%s) doesn't match pattern (%s)" % (scope.UARTTrigger.matched_pattern_data, pattern)
+        assert pattern[:bytes_compared] in ss_comm, "Target last read (%s) doesn't contain pattern (%s)" % (ss_comm, pattern)
+        pattern_start = scope.UARTTrigger.pattern_size - len(pattern)
+        #pattern_stop = max(pattern_start + bytes_compared, 8)
+        pattern_stop = min(pattern_start + bytes_compared, 8)
+        assert scope.UARTTrigger.matched_pattern_data()[pattern_start:pattern_stop] == pattern[:bytes_compared], "matched_pattern_data (%s) doesn't match pattern (%s)" % (scope.UARTTrigger.matched_pattern_data(), pattern)
         assert scope.UARTTrigger.matched_pattern_counts[0] == (start_count + 1) % 256, "Match count didn't increase by 1"
 
 
@@ -1544,6 +1629,62 @@ def glitch_continuous():
         errors += 1
         print("WARNING: crowbar still active, make sure target is ok")
     assert errors == 0
+
+@pytest.mark.parametrize("module, pattern, reps, desc", testGlitchTriggerData)
+#@pytest.mark.skipif(not target_attached, reason='No target detected')
+def test_glitch_trigger(fulltest, module, pattern, reps, desc):
+    if not fulltest:
+        pytest.skip("use --fulltest to run")
+        return None
+    scope.reset_fpga()
+    reset_setup()
+    scope.default_setup()
+    time.sleep(0.1)
+    assert scope.clock.pll.pll_locked == True
+    scope.glitch.enabled = True
+    scope.glitch.clk_src = 'pll'
+    scope.glitch.output = "enable_only"
+    scope.glitch.trigger_src = 'ext_single'
+    scope.glitch.repeat = 10
+    scope.glitch.ext_offset = 0
+
+    scope.io.glitch_lp = False
+    scope.io.glitch_hp = False
+    scope.io.hs2 = 'glitch'
+
+    scope.LA.enabled = True
+    scope.LA.oversampling_factor = 20
+    scope.LA.downsample = 1
+    scope.LA.capture_group = 'glitch debug'
+    scope.LA.trigger_source = "trigger_glitch"
+    scope.LA.capture_depth = 500
+
+    scope.trigger.module = module
+    scope.trigger.triggers = 'nrst'
+    scope.trigger.edges = 4
+    scope.adc.basic_mode = 'rising_edge'
+    scope.adc.clip_errors_disabled = True
+    scope.adc.lo_gain_errors_disabled = True
+
+    scope.io.nrst = False
+    slack = scope.LA.oversampling_factor
+    expected_edges = [104, 304]
+
+    for i in range(reps):
+        scope.LA.arm()
+        scope.arm()
+        for j in pattern:
+            scope.io.nrst = j
+        scope.capture()
+
+        assert not scope.LA.fifo_empty(), "LA capture failed"
+        raw = scope.LA.read_capture_data()
+        hs2 = scope.LA.extract(raw, 8)
+        edges = find_edges(hs2)
+        assert len(edges) == 2, 'Expected 2 glitch edges, got %d' % len(edges)
+        assert not (1 in hs2[:edges[0]+1]), 'unexpected early glitch edge'
+        for i in range(2):
+            assert abs(edges[i] - expected_edges[i]) < slack, 'edge #%d expected near %d, found at %d' % (i+1, expected_edges[i], edges[i])
 
 
 def test_xadc():
